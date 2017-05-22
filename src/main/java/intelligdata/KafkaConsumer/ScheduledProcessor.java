@@ -11,6 +11,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 
 import intelligdata.KafkaProducer.WebActivity;
 
@@ -18,7 +20,6 @@ public class ScheduledProcessor implements Runnable{
 	Map<Integer, List<ConsumerRecord<Integer, WebActivity>>> activityCache;
 	ExecutorService executorService;
 	Map<Integer, Long> summaryMap;
-	KafkaConsumer<Integer, WebActivity> consumer;
 	AtomicBoolean isBusy=new AtomicBoolean(false);
 	public ScheduledProcessor(Map<Integer, List<ConsumerRecord<Integer, WebActivity>>> activityCache,ExecutorService executorService,
 			Map<Integer, Long> summaryMap) {

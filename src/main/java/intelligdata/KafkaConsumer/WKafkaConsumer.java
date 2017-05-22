@@ -2,6 +2,7 @@ package intelligdata.KafkaConsumer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
@@ -32,6 +34,7 @@ public class WKafkaConsumer implements Runnable{
 	ScheduledExecutorService executor;
 	ScheduledProcessor scheledProcessor;
 	Map<Integer, Long> summaryMap;
+	Map<TopicPartition,OffsetAndMetadata> commitMap;
 	Map<Integer, List<ConsumerRecord<Integer, WebActivity>>> activityCache;
 	public WKafkaConsumer(String consumerID,String groupID,String brokers, String topic) {
 		summaryMap=new ConcurrentHashMap<>();
@@ -40,6 +43,7 @@ public class WKafkaConsumer implements Runnable{
 		consumer=new KafkaConsumer<Integer, WebActivity>(getConsumerConfig(consumerID, groupID, brokers));
 		executorService=Executors.newFixedThreadPool(numberOfThreads);
 		executor = Executors.newScheduledThreadPool(1);
+		commitMap=new HashMap<>();
 		startScheduler();
 	}
 	public void run(){
@@ -53,10 +57,10 @@ public class WKafkaConsumer implements Runnable{
 					consumer.resume(assignment);
 					consumer.poll(0);
 				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
+			if(activityCache.isEmpty())this.commit();
 			ConsumerRecords<Integer, WebActivity> records=consumer.poll(100);
 			Set<TopicPartition> partitions=records.partitions();
 			for(TopicPartition partition: partitions){
@@ -65,6 +69,7 @@ public class WKafkaConsumer implements Runnable{
 				List<ConsumerRecord<Integer, WebActivity>>curActivities=activityCache.getOrDefault(partitionId, new ArrayList<ConsumerRecord<Integer, WebActivity>>());
 				curActivities.addAll(partitionRecords);
 				activityCache.put(partitionId, curActivities);
+				commitMap.put(partition, new OffsetAndMetadata(partitionRecords.get(partitionRecords.size()-1).offset()+1));
 			}
 		}
 		shutDown();
@@ -87,7 +92,6 @@ public class WKafkaConsumer implements Runnable{
 		try {
 			executorService.awaitTermination(5, TimeUnit.SECONDS);
 		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}finally{
 			if(!executorService.isTerminated()){
@@ -116,5 +120,9 @@ public class WKafkaConsumer implements Runnable{
 		int period = 5;
 		Runnable scheledProcessor=new ScheduledProcessor(activityCache, executorService, summaryMap);
 		executor.scheduleAtFixedRate(scheledProcessor, initialDelay, period, TimeUnit.SECONDS);
+	}
+	public void commit(){
+		consumer.commitSync(commitMap);
+		commitMap.clear();
 	}
 }
